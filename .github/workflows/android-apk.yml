@@ -1,0 +1,75 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Extract web project archive
+        run: |
+          test -f ludo-craft.zip || (echo 'Upload the original project as ludo-craft.zip to the repository root.' && exit 1)
+          mkdir project
+          unzip -q ludo-craft.zip -d project
+
+      - name: Install dependencies and Capacitor
+        working-directory: project
+        run: |
+          npm install
+          npm install @capacitor/core@^7 @capacitor/android@^7
+          npm install --save-dev @capacitor/cli@^7
+
+      - name: Add Android configuration
+        working-directory: project
+        run: |
+          cat > capacitor.config.json <<'CONFIG'
+          {
+            "appId": "com.intimedevs.royalludo3d",
+            "appName": "Royal Ludo 3D",
+            "webDir": "dist",
+            "bundledWebRuntime": false
+          }
+          CONFIG
+
+      - name: Build web app
+        working-directory: project
+        run: npm run build
+
+      - name: Generate Android project and copy web assets
+        working-directory: project
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: project/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: royal-ludo-3d-debug-apk
+          path: project/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+          
